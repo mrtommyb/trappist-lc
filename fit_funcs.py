@@ -6,8 +6,7 @@ from scipy.ndimage import label
 from martinsff import martinsff
 import extract_lc
 
-import yash_bls
-from blssearch import doSearch, plotSearch, get_qf
+
 from photo_test import raw_moment, intertial_axis, plot_bars
 
 from ktransit import FitTransit, LCModel
