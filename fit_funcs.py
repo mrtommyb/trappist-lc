@@ -213,7 +213,7 @@ def transit_fit(t1, cfflux):
     fitT = FitTransit()
     fitT.add_guess_star(rho=50.0, ld1 = 0.43, ld2 = 0.14)  # fixed because I'm sleepy
 
-    for planet in [planetb, planetc, planetd, planete, planetf, planetg, planeth]:
+    for planet in [planetb, planetc, planetd, planete, planetf, planetg]:
         fitT.add_guess_planet(
             period=planet['period_days'][0], impact=planet['impact'][0],
             T0=planet['t0'][0], rprs=(planet['td_percent'][0]/100)**0.5)
