@@ -33,14 +33,17 @@ def get_label_im(fluxarr,bg_cut):
     return labim
 
 
-def bg_sub(fla):
+def bg_sub(fla,smear=True):
     """
     subtract the background from a series of images
     by assuming the aperture is large enough to be
     predominantly background
     """
     for i in xrange(np.shape(fla)[0]):
-        fla[i,:,:] = fla[i,:,:] - np.nanmedian(fla[i,:,:])
+        if smear:
+            fla[i,:,:] = fla[i,:,:] - np.nanmedian(fla[i,:,:], axis=0)
+        else:
+            fla[i,:,:] = fla[i,:,:] - np.nanmedian(fla[i,:,:])
     return fla
 
 def optimalAperture(t_time, t_fluxarr, t_quality, qual_cut=False, return_qual=False, toss_resat=False, bg_cut=5, skip=0):
@@ -139,6 +142,7 @@ def optimalAperture(t_time, t_fluxarr, t_quality, qual_cut=False, return_qual=Fa
 
     momlims = [ymin,ymax+1,xmin,xmax+1]
 
+
     #loop that performs the aperture photometry
     for i,fl in enumerate(flux_b):
         lc[i] = np.sum(fl[lab == regnum])
@@ -148,6 +152,8 @@ def optimalAperture(t_time, t_fluxarr, t_quality, qual_cut=False, return_qual=Fa
         momim[~np.isfinite(momim)] == 0.0
         xbar[i], ybar[i], cov = intertial_axis(momim)
 
+    xbar[~np.isfinite(xbar) | ~np.isfinite(ybar)] = np.nan
+    ybar[~np.isfinite(xbar) | ~np.isfinite(ybar)] = np.nan
 
     if return_qual:
         return None
@@ -165,10 +171,10 @@ def get_lc(time1, fluxarr1, quality1, n_chunks, bg_cut, flatlc_window, smooth_wi
 
     m1 = np.isfinite(lc) * np.isfinite(lc)
 
-    time = time1[m1]
-    lc = lc[m1]
-    xbar = xbar[m1]
-    ybar = ybar[m1]
+    time = time1[m1][quality1[m1] == 0]
+    lc = lc[m1][quality1[m1] == 0]
+    xbar = xbar[m1][quality1[m1] == 0]
+    ybar = ybar[m1][quality1[m1] == 0]
 
 
 
@@ -202,22 +208,27 @@ def get_lc(time1, fluxarr1, quality1, n_chunks, bg_cut, flatlc_window, smooth_wi
     return time, lc, xbar, ybar, t1, corflux, cfflux
 
 
-def transit_fit(t1, cfflux):
+def transit_fit(t1, cfflux, cadence='long', rho=50.0):
     addtime = 4833 # convert from trappist time to kepler time
 
-    time = t1 [(cfflux < 0.005) * (cfflux > -0.015)]  +addtime        # you need a time and a flux
-    flux = cfflux[(cfflux < 0.005) * (cfflux > -0.015)]             # there are no transits here :(
+    time = t1 [(cfflux < 0.025) * (cfflux > -0.025)]  +addtime        # you need a time and a flux
+    flux = cfflux[(cfflux < 0.025) * (cfflux > -0.025)]             # there are no transits here :(
     ferr = np.ones_like(time) * 0.001     # uncertainty on the data
 
     fitT = FitTransit()
-    fitT.add_guess_star(rho=50.0, ld1 = 0.43, ld2 = 0.14)  # fixed because I'm sleepy
+    fitT.add_guess_star(rho=rho, ld1 = 1.0181, ld2 = -0.0404)  # fixed because I'm sleepy
 
-    for planet in [planetb, planetc, planetd, planete, planetf, planetg]:
+    for planet in [planetb, planetc, planetd, planete, planetf, planetg, planeth]:
         fitT.add_guess_planet(
             period=planet['period_days'][0], impact=planet['impact'][0],
             T0=planet['t0'][0], rprs=(planet['td_percent'][0]/100)**0.5)
 
-    fitT.add_data(time=time, flux=flux, ferr=ferr, itime=np.ones_like(time) * 0.0188)
+    if cadence == 'long':
+      fitT.add_data(time=time, flux=flux, ferr=ferr,
+                    itime=np.ones_like(time) * 0.0188)
+    elif cadence == 'short':
+      fitT.add_data(time=time, flux=flux, ferr=ferr,
+                    itime=np.ones_like(time) * 0.0188 / 30)
 
     vary_star = ['rho', 'zpt']      # free stellar parameters
     vary_planet = (['period',       # free planetary parameters
@@ -260,7 +271,7 @@ def bin_data(phi,flux,bins,model=None):
     return np.array(phibin), np.array(fluxbin), np.array(stdbin) / np.sqrt(bins)
 
 
-def model_ktransit(time, rho, zpt, ld1, ld2, fitresultsplanet):
+def model_ktransit(time, rho, zpt, ld1, ld2, fitresultsplanet, cadence):
     M = LCModel()
     M.add_star(rho=rho,zpt=zpt,ld1=ld1,
             ld2=ld2,dil=0)
@@ -269,16 +280,19 @@ def model_ktransit(time, rho, zpt, ld1, ld2, fitresultsplanet):
                  impact=fitresultsplanet['impact'],
                  rprs=fitresultsplanet['rprs']
                  )
-    M.add_data(time=time)
+    if cadence == 'long':
+      M.add_data(time=time, itime=np.ones_like(time) * 0.0188)
+    elif cadence == 'short':
+      M.add_data(time=time, itime=np.ones_like(time) * 0.0188 / 30)
     return M.transitmodel
 
-def plot_model(ax,time,flux, rho, zpt, ld1, ld2, fitresultsplanet):
+def plot_model(ax,time,flux, rho, zpt, ld1, ld2, fitresultsplanet, cadence='long'):
 
     T0=fitresultsplanet['T0']
     period=fitresultsplanet['period']
     q1, f1 = get_qf(time,flux,T0,period)
 
-    model = model_ktransit(time, rho, zpt, ld1, ld2, fitresultsplanet)
+    model = model_ktransit(time, rho, zpt, ld1, ld2, fitresultsplanet, cadence=cadence)
     q1, m1 = get_qf(time,model,T0,period)
     ax.scatter(q1*24., f1/10000,color='k',alpha=period**0.5/5,s=4
               )
@@ -292,3 +306,22 @@ def plot_model(ax,time,flux, rho, zpt, ld1, ld2, fitresultsplanet):
     ax.minorticks_on()
     return ax
 
+def plot_model_sc(ax,time,flux, rho, zpt, ld1, ld2, fitresultsplanet, cadence='long'):
+
+    T0=fitresultsplanet['T0']
+    period=fitresultsplanet['period']
+    q1, f1 = get_qf(time,flux,T0,period)
+
+    model = model_ktransit(time, rho, zpt, ld1, ld2, fitresultsplanet, cadence=cadence)
+    q1, m1 = get_qf(time,model,T0,period)
+    ax.scatter(q1*24., f1/10000,color='k',alpha=period**0.5/10.,s=4
+              )
+    ax.plot(q1*24., m1/10000,color='r')
+    bq, bf, be = bin_data(q1,f1,bins=1000.//period)
+    ax.errorbar(bq*24., bf/10000, yerr=be/10000, ls='',color='b')
+    ax.set_xlim([-4,4])
+    ax.set_ylim([2.1,-1.1])
+    #ax.set_xlabel('Time from mid-transit (days)')
+    ax.set_ylabel('Transit depth (%)', fontsize=17)
+    ax.minorticks_on()
+    return ax
