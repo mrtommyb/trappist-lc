@@ -177,7 +177,7 @@ class Search(object):
             time,flux,ferr,nf,freq,df,nb,qmin,qmax)
             arr[i] = p,bper,bpow,depth,qtran,in1,in2
             if i%1000 == 0:
-                print i
+                print(i)
         self.arr= arr
 
     def compute_bls(self,time, lc, df, nf, nb, qmi, qma, fmin,norm=True):
