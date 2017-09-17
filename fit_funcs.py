@@ -171,10 +171,10 @@ def get_lc(time1, fluxarr1, quality1, n_chunks, bg_cut, flatlc_window, smooth_wi
 
     m1 = np.isfinite(lc) * np.isfinite(lc)
 
-    time = time1[m1]
-    lc = lc[m1]
-    xbar = xbar[m1]
-    ybar = ybar[m1]
+    time = time1[m1][quality1[m1] == 0]
+    lc = lc[m1][quality1[m1] == 0]
+    xbar = xbar[m1][quality1[m1] == 0]
+    ybar = ybar[m1][quality1[m1] == 0]
 
 
 
